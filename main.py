@@ -3,7 +3,7 @@ import os
 import struct
 from ctypes import *
 
-HOST = '172.20.10.4'
+HOST = '192.168.0.11'
 
 class IP(Structure):
     _fields_ = [
