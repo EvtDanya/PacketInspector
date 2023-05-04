@@ -1,6 +1,7 @@
 #!/bin/bash
+# for unix systems
 # 1: chmod +x install_dependencies.sh
-# 2:./install_dependencies.sh
+# 2: sudo ./install_dependencies.sh
 
 # Install required packages
 sudo apt-get update
