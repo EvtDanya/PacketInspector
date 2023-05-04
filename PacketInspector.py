@@ -24,3 +24,7 @@ if __name__ == "__main__":
 args = parser.parse_args()   
 sock = socket.socket(socket.AF_PACKET, socket.SOCK_RAW, socket.ntohs(3))
 sock.bind((args.interface, 0)) 
+
+while True:
+    packet, addr = sock.recvfrom(65535)
+    
