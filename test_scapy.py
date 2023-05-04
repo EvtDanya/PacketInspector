@@ -1,10 +1,13 @@
 from scapy.all import *
 
-filter = "host 192.168.0.11"
+def packet_callback(packet):
+    src = packet[IP].src
+    dst = packet[IP].dst
+    proto = packet[IP].proto
+    length = len(packet)
+    data = packet.load
+    print(f"{src} -> {dst}: {length} bytes, Protocol: {proto}")
+    print(f"Data: {data}")
+    print(packet.summary(), '\n')
 
-def packet_handler(packet):
-    print('Hello')
-    print(packet.summary())
-    
-if __name__ == "__main__":
-    sniff(filter=filter, prn=packet_handler)
+sniff(filter="tcp", prn=packet_callback, count=10)

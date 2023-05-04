@@ -2,11 +2,12 @@ import socket
 import os
 import struct
 import ctypes
-import sys
 
 # host to listen on
-host = '172.20.10.4'
+host = "192.168.0.187"
 
+# the structure has been taken from canonical IP Header definition
+# i.e. sites.uclouvain.be/SystInfo/usr/include/netinet/ip.h.html
 class IP(ctypes.Structure):
     _fields_= [
         ("ihl",          ctypes.c_ubyte, 4),
@@ -67,7 +68,7 @@ sniffer = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket_protocol)
 # i had trouble with my VM here following along the lesson of the book
 # sniffer.bind((host, 0))
 # so I was able to made it working forwarding to this port
-sniffer.bind(("0.0.0.0", 0))
+sniffer.bind(("0.0.0.0", 6677))
 
 # keep IP headers in the capture
 sniffer.setsockopt(socket.IPPROTO_IP, socket.IP_HDRINCL, 1)
