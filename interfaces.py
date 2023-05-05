@@ -15,5 +15,5 @@ while True:
     except ValueError:
         print("Ошибка: Введите корректный номер интерфейса")
 
-interface_name = interfaces[choice-1].name
+interface_name = interfaces[choice-1].nice_name
 print(f"Выбран интерфейс: {interface_name}")
