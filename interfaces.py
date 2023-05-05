@@ -4,7 +4,7 @@ interfaces = ifaddr.get_adapters()
 
 print("Доступные интерфейсы:")
 for i, interface in enumerate(interfaces):
-    print(f"{i+1}: {interface.nice_name} {interface.name} {interface.ips}")
+    print(f"{i+1}: Name: {interface.nice_name}, IP-address: {interface.ips[1].ip}, Mac-address: {interface.ips[0].ip[0]}")
 
 while True:
     try:
