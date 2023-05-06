@@ -3,6 +3,8 @@ import argparse
 import platform
 import ifaddr
 import json
+import struct
+
 
 def parse_args():
   '''
@@ -60,10 +62,13 @@ def choose_interface():
         if choice < 1 or choice > len(interfaces):
             raise ValueError
         break
+    except KeyboardInterrupt:
+      print("\nExiting...")
+      exit(0)
     except ValueError:
       print("Incorrect number, try again!")
         
-  return interfaces[choice-1]['name']
+  return interfaces[choice-1]
   
 def main(): 
   print_logo()
@@ -77,7 +82,7 @@ def main():
   
   if args.interactive:
     interface = choose_interface()
-    print(f"Your choice: {interface}\n")
+    print(f"Your choice: {interface['name']}\n")
   
   else:
     interface = next((x for x in interfaces if x['name'] == args.interface), None)
@@ -107,24 +112,34 @@ def main():
   
   
   try:
+    print(interface)
     if system == "Windows":
         sock = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_IP)
-        sock.bind((interface, 0))
+        sock.bind((interface['ip'], 0))
         sock.setsockopt(socket.IPPROTO_IP, socket.IP_HDRINCL, 1)
         sock.ioctl(socket.SIO_RCVALL, socket.RCVALL_ON)
         
     elif system == "Linux":
         sock = socket.socket(socket.AF_PACKET, socket.SOCK_RAW, socket.ntohs(3))
-        sock.bind((interface, 0))
+        sock.bind((interface['ip'], 0))
+  except KeyboardInterrupt:
+    print("\nExiting...")
+    exit(0)
   except Exception as ex:
     print(f'\n[*] {ex}\nTry again with another interface!\n')
     if args.interactive:
       choose_interface()
     else:
       exit(1)
-    
+
   while True:
-      packet, addr = sock.recvfrom(65535)
+    try:
+      print(sock.recvfrom(65535))
+    except KeyboardInterrupt:
+      print("\nExiting...")
+      if system == "Windows":
+        sock.ioctl(socket.SIO_RCVALL, socket.RCVALL_OFF)
+      exit(0)
 
 if __name__ == "__main__":
   main()
