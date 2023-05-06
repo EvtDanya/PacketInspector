@@ -2,6 +2,7 @@ import socket
 import argparse
 import platform
 import ifaddr
+import json
 
 def parse_args():
   '''
@@ -12,18 +13,27 @@ def parse_args():
   parser.add_argument('-i', '--interface', metavar='interface', type=str, help='interface to listen on')
   parser.add_argument('-r', '--raw', action='store_true', help='output packet contents in raw format')
   parser.add_argument('-hd', '--header', action='store_true', help='output header')
-  parser.add_argument('--interactive', action='store_true', help='interactive mode for settings')
+  parser.add_argument('-I', '--interactive', action='store_true', help='interactive mode for settings')
 
   return parser.parse_args()
 
 def get_interfaces():
-  list_of_interfaces = {}
+  '''
+  Get list of interfaces
+  '''
+  list_of_interfaces = []
   interfaces = ifaddr.get_adapters()
 
   for interface in interfaces:
-    list_of_interfaces.update({f"{interface.nice_name}":f"IP-address: {interface.ips[1].ip}, Mac-address: {interface.ips[0].ip[0]}"})
-  
+    interface_for_list = {}
+    interface_for_list['name'] = interface.nice_name
+    interface_for_list['ip'] = interface.ips[1].ip
+    interface_for_list['mac'] = interface.ips[0].ip[0]
+    list_of_interfaces.append(interface_for_list)
+
   return list_of_interfaces
+
+interfaces = get_interfaces()
 
 def print_logo():
   print(
@@ -36,11 +46,14 @@ def print_logo():
           '                                             | |                                 \n'
           '                                             |_|                                 \n'
         )
+  
 def choose_interface():
-  interfaces = get_interfaces()
+  '''
+  Select the interface to sniff on
+  '''
   print('Available interfaces, choose one of them:')
   for i, interface in enumerate(interfaces):
-    print(f"{i+1}: {interface}, {interfaces[interface]}")
+    print(f"{i+1}: {interface['name']}, {interface['ip']}")
   while True:
     try:
         choice = int(input('\nEnter number of interface: '))
@@ -50,9 +63,11 @@ def choose_interface():
     except ValueError:
       print("Incorrect number, try again!")
         
-  return list(interfaces)[choice-1]
+  return interfaces[choice-1]['name']
   
-def main():   
+def main(): 
+  print_logo()
+    
   args = parse_args()  
   system = platform.system()
   
@@ -64,8 +79,32 @@ def main():
     interface = choose_interface()
     print(f"Your choice: {interface}\n")
   
-  else: 
-    interface = args.interface 
+  else:
+    interface = next((x for x in interfaces if x['name'] == args.interface), None)
+    if interface is None:
+      print(f"Interface {args.interface} not found")
+      exit(0) 
+  
+  if not args.protocol and not args.interactive:
+    print('You must specify the protocol or use interactive mode!')
+    exit(0)
+    
+  if args.interactive:
+    while True:
+      protocol = input("Enter protocol to sniff for (TCP, UDP, ICMP): ")
+      if protocol.upper() in ['TCP', 'UDP', 'ICMP']:
+        protocol = protocol.upper()
+        break
+      else:
+        print('Invalid protocol! Try again\n')
+  else:
+    if args.protocol.upper() in ['TCP', 'UDP', 'ICMP']:
+      protocol = args.protocol.upper()
+    else:
+      print(f'Incorrect protocol! {args.protocol} is not TCP, UDP or ICMP')
+      exit(0)  
+
+  
   
   try:
     if system == "Windows":
@@ -78,7 +117,7 @@ def main():
         sock = socket.socket(socket.AF_PACKET, socket.SOCK_RAW, socket.ntohs(3))
         sock.bind((interface, 0))
   except Exception as ex:
-    print(f'[*] {ex}\nTry again with another interface!\n')
+    print(f'\n[*] {ex}\nTry again with another interface!\n')
     if args.interactive:
       choose_interface()
     else:
