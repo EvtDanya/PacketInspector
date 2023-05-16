@@ -1,13 +1,39 @@
-import socket 
 import argparse
 import platform
-import ifaddr
+
+#pretty print
 from colorama import init, Fore, Style
 from prettytable import PrettyTable
+
 import datetime
 import logging
+
 import ipaddress
+import ifaddr
+import socket 
 import struct
+
+# for running as admin
+import ctypes
+import sys
+import os
+
+def run_as_admin(system):
+  '''
+  Check if admin and run as admin if needed
+  '''
+  if system == 'Windows':
+    try:
+      if not ctypes.windll.shell32.IsUserAnAdmin():  
+        ctypes.windll.shell32.ShellExecuteW(None, 'runas', sys.executable, " ".join(sys.argv), None, 1)
+        exit(0)
+    except Exception as e:
+      print_color(f'\n[Err] {e}', 'red')      
+      exit(1)
+  elif system == 'Linux':
+    if os.getuid() != 0:
+      print_color('\nPlease re-run the sniffer using sudo', 'red')
+      exit(0)
 
 def parse_args():
   '''
@@ -74,7 +100,12 @@ def print_logo():
         + Style.RESET_ALL)
 
 class IP:
-
+  '''
+  Class for packet parsing
+  '''
+  def __init__(self, buff=None):
+    header = struct.unpack('<BBHHHBBH4s4s', buff) # ipv4 header, add ipv6 header in future versions
+    self.ver 
 
   
 def choose_interface(interfaces):
@@ -138,15 +169,17 @@ def parse_packet(packet_data, raw, header):
 def process_packet(packet):
   '''
   Process a packet
-  '''
+  ''' 
   return 
 
-def main(): 
+def main():
+  system = platform.system()
+  run_as_admin(system) 
+  
   init()
   print_logo()
     
   args = parse_args()  
-  system = platform.system()
   interfaces = get_interfaces()
   
   if not args.interactive and not args.interface:
@@ -170,8 +203,8 @@ def main():
     
   if args.interactive:
     while True:
-      protocol = input('Enter protocol to sniff for (TCP, UDP, ICMP): ')
-      if protocol.upper() in ['TCP', 'UDP', 'ICMP']:
+      protocol = input('Enter protocol to sniff for (TCP, UDP, ICMP, ALL): ')
+      if protocol.upper() in ['TCP', 'UDP', 'ICMP', 'ALL']:
         protocol = protocol.upper()
         break
       else:
@@ -210,7 +243,7 @@ def main():
   while True:
     try:
       raw_packet, address = sniffer_socket.recvfrom(65535)
-      
+      #фильтровать по айпи и по протоколу и по порту назначения
       packet_count += 1
       
       # Process the packet
@@ -219,7 +252,7 @@ def main():
       if output_file:
         pcap_file.write(str(raw_packet))
       
-      break
+      
     except KeyboardInterrupt:
       print('\nExiting...')
       end_time = datetime.datetime.now()
@@ -230,8 +263,8 @@ def main():
       break
     
     except socket.error as e:
-      print_color(f"\n[Err] {e}", 'red')
-      logging.error(f"[Err] {e}")
+      print_color(f'\n[Err] {e}', 'red')
+      logging.error(f'[Err] {e}')
       break
     
   if args.output:
@@ -240,7 +273,7 @@ def main():
       
 
 if __name__ == '__main__':
-  logging.basicConfig(level=logging.ERROR, filename="sniffer.log",filemode="a")
+  logging.basicConfig(level=logging.ERROR, filename='sniffer.log',filemode='a')
   main()
 
 
