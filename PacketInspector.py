@@ -6,7 +6,8 @@ from colorama import init, Fore, Style
 from prettytable import PrettyTable
 import datetime
 import logging
-import pcapfile
+import ipaddress
+import struct
 
 def parse_args():
   '''
@@ -18,7 +19,7 @@ def parse_args():
   parser.add_argument('-i', '--interface', metavar='interface', type=str, help='interface to listen on')
   parser.add_argument('-r', '--raw', action='store_true', help='output packet contents in raw format')
   parser.add_argument('-hd', '--header', action='store_true', help='output header')
-  parser.add_argument('-o', '--output', metavar='filename', type=str, help='Output file name')
+  parser.add_argument('-o', '--output', metavar='filename', type=str, help='Save packages to the specified file (without extension). If file is not exist then create a new')
 
   return parser.parse_args()
 
@@ -39,6 +40,9 @@ def get_interfaces():
   return available_interfaces
 
 def print_table_with_interfaces(interfaces):
+  '''
+  Print table of interfaces
+  '''
   table = PrettyTable()
   table.field_names = ["#", "Interface", "Ip"]
   for i, interface in enumerate(interfaces):
@@ -46,6 +50,9 @@ def print_table_with_interfaces(interfaces):
   print(table)
 
 def print_color(text, color=None):
+  '''
+  Print color text
+  '''
   if color is not None:
     color_obj = getattr(Fore, color.upper(), None)
     if color_obj is not None:
@@ -65,6 +72,10 @@ def print_logo():
           '                                             | |                                 \n'
           '                                             |_|                                 \n'
         + Style.RESET_ALL)
+
+class IP:
+
+
   
 def choose_interface(interfaces):
   '''
@@ -103,7 +114,33 @@ def get_sniffer_socket(system, interface):
     sniffer_socket.bind((interface['name'], 0))
 
   return sniffer_socket
-  
+
+def parse_packet(packet_data, raw, header):
+  '''
+  Parse a captured packet
+  '''
+  print('\n')
+  if raw:
+    print(packet_data)
+  else:
+    if header:
+      print_color('Header:', 'yellow')
+      print(packet_data[:14])
+    print_color('Data:', 'yellow')
+    print(packet_data[14:])
+
+# def filter_packet(packet, filter):
+#   '''
+#   Filter a packet
+#   '''
+#   return True
+
+def process_packet(packet):
+  '''
+  Process a packet
+  '''
+  return 
+
 def main(): 
   init()
   print_logo()
@@ -145,47 +182,62 @@ def main():
     else:
       print_color(f'[Err] Incorrect protocol! {args.protocol} is not TCP, UDP or ICMP','yellow')
       exit(0)  
-
-  try:
-    sniffer_socket = get_sniffer_socket(system, interface)
-  except KeyboardInterrupt:
-    print('\nExiting...')
-    exit(0)
-  except Exception as ex:
-    print_color(f'\n[Err] {ex}\nTry again with another interface!\n', 'yellow')
-    if args.interactive:
-      interface = choose_interface(interfaces)
-    else:
-      exit(1)
+      
+  while True:
+    try:
+      sniffer_socket = get_sniffer_socket(system, interface)
+      break
+    except Exception as ex:
+      print_color(f'\n[Err] {ex}\nTry again with another interface!\n', 'yellow')
+      if args.interactive:
+        interface = choose_interface(interfaces)
+      else:
+        exit(0)
       
   output_file = args.output
   if output_file:
+    output_file +='.pcap'
     try:
-      pcap_file = open(args.output, 'wb')
+      pcap_file = open(args.output, 'a')
       logging.info(f"Output file: {args.output}")
     except IOError:
       print_color(f'[Err] Unable to open file {args.output}', 'red')
       exit(0)
       
-  print_color(f"\n[*] Sniffing started on interface {interface['name']}\n", 'green')    
+  print_color(f"\n[*] Sniffing started on interface {interface['name']}", 'green')    
+  packet_count = 0
   start_time = datetime.datetime.now()
   while True:
     try:
-      print(sniffer_socket.recvfrom(65535))
+      raw_packet, address = sniffer_socket.recvfrom(65535)
+      
+      packet_count += 1
+      
+      # Process the packet
+      parse_packet(raw_packet, args.raw, args.header)
+
+      if output_file:
+        pcap_file.write(str(raw_packet))
+      
+      break
     except KeyboardInterrupt:
       print('\nExiting...')
       end_time = datetime.datetime.now()
-      print("Total sniffing time:", end_time - start_time) # перенести вывод, добавить статистику по пакетам
+      print(f'Total sniffing time: {end_time - start_time}')
+      print(f'Total packets captured {packet_count}')
       if system == 'Windows':
         sniffer_socket.ioctl(socket.SIO_RCVALL, socket.RCVALL_OFF)
-      exit(0)
+      break
+    
     except socket.error as e:
-      print_color(f"[Err] Error: {e}", 'red')
-      logging.error(f"[Err] Error: {e}")
-    finally:
-      sniffer_socket.close()
-      if args.output:
-        pcap_file.close()
+      print_color(f"\n[Err] {e}", 'red')
+      logging.error(f"[Err] {e}")
+      break
+    
+  if args.output:
+    print(f'Packets captured into {args.output}.pcap')
+    pcap_file.close()
+      
 
 if __name__ == '__main__':
   logging.basicConfig(level=logging.ERROR, filename="sniffer.log",filemode="a")
