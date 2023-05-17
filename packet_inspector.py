@@ -8,10 +8,12 @@ from prettytable import PrettyTable
 import datetime
 import logging
 
+# for sniffing
 import ipaddress
 import ifaddr
 import socket 
 import struct
+import time
 
 # for running as admin
 import ctypes
@@ -19,9 +21,9 @@ import sys
 import os
 
 # import graphics module
-from graphics import *
+#from graphics import *
 
-def run_as_admin(system):
+def run_as_admin(system) -> None:
   '''
   Check if admin and run as admin if needed
   '''
@@ -43,22 +45,61 @@ class ArgumentParser(argparse.ArgumentParser):
     print_logo() # print logo when printing helps
     super().print_help()
 
-def parse_args():
+def parse_args() -> argparse.Namespace:
   '''
   Parse command line arguments
   '''
-  parser = ArgumentParser(description='packet sniffer with python by d00m_r34p3r')
-  parser.add_argument('-I', '--interactive', action='store_true', help='interactive mode for settings')
-  parser.add_argument('-p', '--protocol', metavar='protocol',  type=str, default='all', help='protocol to filter by (tcp, udp, icmp)')
-  parser.add_argument('-i', '--interface', metavar='interface', type=str, help='interface to listen on')
-  parser.add_argument('-r', '--raw', action='store_true', help='output packet contents in raw format')
-  parser.add_argument('-hd', '--header', action='store_true', help='output header')
-  parser.add_argument('-o', '--output', metavar='filename', type=str, help='save packages to the specified file (without extension). If file is not exist then create a new')
-  parser.add_argument('-g','--graphics', action='store_true', help='draw graphics with statistics after sniffing (don\'t close window with sniffer)')
+  parser = ArgumentParser(
+    description='packet sniffer by d00m_r34p3r',
+    formatter_class=lambda prog: argparse.HelpFormatter(prog,max_help_position=56)
+  )
+  parser.add_argument( 
+    '-I', '--interactive',
+    action='store_true',
+    help='interactive mode for settings'
+  )
+  parser.add_argument(
+    '-p', '--protocol',
+    metavar='protocol',
+    type=str, default='all',
+    help='protocol to filter by (tcp, udp, icmp)'
+  )
+  parser.add_argument(
+    '-i', '--interface',
+    metavar='interface',
+    type=str,
+    help='interface to listen on'
+  )
+  parser.add_argument(
+    '-r', '--raw',
+    action='store_true',
+    help='output packet contents in raw format'
+  )
+  parser.add_argument(
+    '-hd', '--header',
+    action='store_true',
+    help='output header'
+  )
+  parser.add_argument(
+    '-v','--verbose',
+    action='store_true',
+    help='print more information about packets'
+  )
+  parser.add_argument(
+    '-o', '--output',
+    metavar='filename',
+    type=str,
+    help='save packets to the specified file with .pcap extension. If file is not exist then create a new. '
+  )
+  parser.add_argument(
+    '-g','--graphics',
+    action='store_true',
+    help='draw graphics with statistics after sniffing (don\'t close window with sniffer)'
+  )
   
   return parser.parse_args()
 
-def get_interfaces():
+def get_interfaces() -> list:
   '''
   Get list of interfaces
   '''
@@ -74,7 +115,7 @@ def get_interfaces():
 
   return available_interfaces
 
-def print_table_with_interfaces(interfaces):
+def print_table_with_interfaces(interfaces) -> None:
   '''
   Print table of interfaces
   '''
@@ -84,7 +125,7 @@ def print_table_with_interfaces(interfaces):
     table.add_row([i+1, interface['name'], interface['ip']])
   print(table)
 
-def print_color(text, color=None):
+def print_color(text, color=None) -> None:
   '''
   Print color text
   '''
@@ -96,7 +137,7 @@ def print_color(text, color=None):
   print(text)  
   
 
-def print_logo():
+def print_logo() -> None:
   print(Fore.GREEN + 
           ' _____           _        _   _____                           _                  \n'
           '|  __ \         | |      | | |_   _|                         | |                 \n'
@@ -108,7 +149,7 @@ def print_logo():
           '                                             |_|                                 \n'
         + Style.RESET_ALL)
 
-class IP:
+class Packet:
   '''
   Class for packet parsing
   '''
@@ -116,6 +157,16 @@ class IP:
     header = struct.unpack('<BBHHHBBH4s4s', buff) # ipv4 header, add ipv6 header in future versions
     self.ver 
 
+  
+  def hexdump(packet) -> None:
+    hex_data = ' '.join(f'{byte:02x}' for byte in packet)
+    ascii_data = ''.join(chr(byte) if 32 <= byte <= 126 else '.' for byte in packet)
+    lines = [hex_data[i:i+48] for i in range(0, len(hex_data), 48)]
+    for line in lines:
+        print(line)
+    print(ascii_data)
+  
+  
   
 def choose_interface(interfaces):
   '''
@@ -139,7 +190,7 @@ def choose_interface(interfaces):
         
   return interfaces[choice-1]
 
-def get_sniffer_socket(system, interface):
+def get_sniffer_socket(system, interface) -> socket:
   '''
   Returns a socket for sniffing
   '''
@@ -155,7 +206,7 @@ def get_sniffer_socket(system, interface):
 
   return sniffer_socket
 
-def parse_packet(packet_data, raw, header):
+def parse_packet(packet_data, raw, header) -> None:
   '''
   Parse a captured packet
   '''
@@ -183,7 +234,7 @@ def process_packet(packet):
 
 def main():
   args = parse_args() # get args and print help for sniffer if necessary
-  
+
   system = platform.system() # we need to run as admin to create sockets
   run_as_admin(system) 
   
@@ -247,7 +298,8 @@ def main():
       print_color(f'[Err] Unable to open file {args.output}', 'red')
       exit(0)
       
-  print_color(f"\n[*] Sniffing started on interface {interface['name']}", 'green')    
+  print_color(f"\n[*] Sniffing started on interface {interface['name']}\nTo stop sniffing use Ctrl + c", 'green') 
+  time.sleep(0.5)
   packet_count = 0
   start_time = datetime.datetime.now()
   while True:
@@ -281,6 +333,8 @@ def main():
   if args.output:
     print(f'Packets captured into {args.output}.pcap')
     pcap_file.close()
+    
+  
       
 
 if __name__ == '__main__':
