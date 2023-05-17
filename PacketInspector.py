@@ -18,6 +18,9 @@ import ctypes
 import sys
 import os
 
+# import graphics module
+from graphics import *
+
 def run_as_admin(system):
   '''
   Check if admin and run as admin if needed
@@ -35,18 +38,24 @@ def run_as_admin(system):
       print_color('\nPlease re-run the sniffer using sudo', 'red')
       exit(0)
 
+class ArgumentParser(argparse.ArgumentParser):
+  def print_help(self):
+    print_logo() # print logo when printing helps
+    super().print_help()
+
 def parse_args():
   '''
   Parse command line arguments
   '''
-  parser = argparse.ArgumentParser(description='packet sniffer with python by d00m_r34p3r')
+  parser = ArgumentParser(description='packet sniffer with python by d00m_r34p3r')
   parser.add_argument('-I', '--interactive', action='store_true', help='interactive mode for settings')
-  parser.add_argument('-p', '--protocol', metavar='protocol',  type=str, default='tcp', help='protocol to filter by (tcp, udp, icmp)')
+  parser.add_argument('-p', '--protocol', metavar='protocol',  type=str, default='all', help='protocol to filter by (tcp, udp, icmp)')
   parser.add_argument('-i', '--interface', metavar='interface', type=str, help='interface to listen on')
   parser.add_argument('-r', '--raw', action='store_true', help='output packet contents in raw format')
   parser.add_argument('-hd', '--header', action='store_true', help='output header')
-  parser.add_argument('-o', '--output', metavar='filename', type=str, help='Save packages to the specified file (without extension). If file is not exist then create a new')
-
+  parser.add_argument('-o', '--output', metavar='filename', type=str, help='save packages to the specified file (without extension). If file is not exist then create a new')
+  parser.add_argument('-g','--graphics', action='store_true', help='draw graphics with statistics after sniffing (don\'t close window with sniffer)')
+  
   return parser.parse_args()
 
 def get_interfaces():
@@ -173,14 +182,15 @@ def process_packet(packet):
   return 
 
 def main():
-  system = platform.system()
+  args = parse_args() # get args and print help for sniffer if necessary
+  
+  system = platform.system() # we need to run as admin to create sockets
   run_as_admin(system) 
   
-  init()
-  print_logo()
-    
-  args = parse_args()  
-  interfaces = get_interfaces()
+  init() #for colorama
+  print_logo() # print logo
+     
+  interfaces = get_interfaces() # get net interfaces
   
   if not args.interactive and not args.interface:
     print_color('[Err] You must specify an interface or use interactive mode!', 'red')
@@ -232,7 +242,7 @@ def main():
     output_file +='.pcap'
     try:
       pcap_file = open(args.output, 'a')
-      logging.info(f"Output file: {args.output}")
+      logging.info(f'Output file: {args.output}')
     except IOError:
       print_color(f'[Err] Unable to open file {args.output}', 'red')
       exit(0)
@@ -267,6 +277,7 @@ def main():
       logging.error(f'[Err] {e}')
       break
     
+  input("Press Enter to continue...")  
   if args.output:
     print(f'Packets captured into {args.output}.pcap')
     pcap_file.close()
