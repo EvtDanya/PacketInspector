@@ -1,19 +1,20 @@
 import argparse
 import platform
 
-#pretty print
+# pretty print
 from colorama import init, Fore, Style
 from prettytable import PrettyTable
+import threading
 
 import datetime
 import logging
 
 # for sniffing
-import ipaddress
 import ifaddr
 import socket 
 import struct
 import time
+import ipaddress
 
 # for running as admin
 import ctypes
@@ -44,17 +45,19 @@ def run_as_admin(system) -> None:
       exit(0)
 
 def validate_ip_address(ip_address):
-  try:
-    socket.inet_aton(ip_address) # try to convert str to ip address
-    return ip_address
-  except socket.error:
-      raise argparse.ArgumentTypeError(f'Invalid IP address: {ip_address}')
-
+  if ip_address != 'ALL':
+    try:
+      socket.inet_aton(ip_address) # try to convert str to ip address
+      return ip_address
+    except socket.error:
+        raise argparse.ArgumentTypeError(f'Invalid IP address: {ip_address}')
+  return 'ALL'
 
 class ArgumentParser(argparse.ArgumentParser):
   def print_help(self):
     print_logo() # print logo when printing helps
     super().print_help()
+    print('\n\n')
 
 def parse_args() -> argparse.Namespace:
   '''
@@ -115,6 +118,11 @@ def parse_args() -> argparse.Namespace:
     action='store_true',
     help='draw graphics with statistics after sniffing (don\'t close window with sniffer)'
   )
+  parser.add_argument(
+    '-c','--clear-output',
+    action='store_true',
+    help='don\'t show packets'
+  )
   
   return parser.parse_args()
 
@@ -171,11 +179,36 @@ class Packet:
   '''
   Class for packet parsing
   '''
-  def __init__(self, buff=None, ip_version=None, ip_protocol_num=None):
-    header = struct.unpack('<BBHHHBBH4s4s', buff) # ipv4 header, add ipv6 header in future versions
-    self.ver 
+  def __init__(self, buff, src_ip=None, dst_ip=None, ip_version=None, ip_protocol_num=None):
+    self.ver = ip_version
+    self.src_address = ipaddress.ip_address(src_ip)
+    self.dst_address = ipaddress.ip_address(dst_ip)
+    self.buff = buff
 
-  
+    if self.ver is None:
+      self.ver = self.src_address.version
+
+    self.protocol_num = ip_protocol_num
+    if self.protocol_num is None:
+        # Set protocol number based on IP version
+        if self.ver == 4:
+            self.protocol_num = socket.IPPROTO_IP
+        elif self.ver == 6:
+            self.protocol_num = socket.IPPROTO_IPV6
+        else:
+                raise ValueError(f'Unsupported IP version: {self.ver}')
+
+        # Parse the packet header
+    header = struct.unpack('<BBHHHBBH4s4s', buff)  # ipv4 header, add ipv6 header in future versions  
+    self.ihl = header[0] & 0xF
+    self.tos = header[1]
+    self.len = header[2]
+    self.id = header[3]
+    self.offset = header[4]
+    self.ttl = header[5]
+    self.sum = header[7]        
+
+   
   def hexdump(packet) -> None:
     hex_data = ' '.join(f'{byte:02x}' for byte in packet)
     ascii_data = ''.join(chr(byte) if 32 <= byte <= 126 else '.' for byte in packet)
@@ -238,17 +271,14 @@ def parse_packet(packet_data, raw, header) -> None:
     print_color('Data:', 'yellow')
     print(packet_data[14:])
 
-# def filter_packet(packet, filter):
-#   '''
-#   Filter a packet
-#   '''
-#   return True
+def update_packet_count():
+  global packet_count, need_to_print
+  while need_to_print:
+    print(f'Total packets captured: {packet_count}', end='\r')
+    time.sleep(1)
 
-def process_packet(packet):
-  '''
-  Process a packet
-  ''' 
-  return 
+packet_count = 0
+need_to_print = False
 
 def main():
   args = parse_args() # get args and print help for sniffer if necessary
@@ -260,6 +290,7 @@ def main():
   print_logo() # print logo
      
   interfaces = get_interfaces() # get net interfaces
+  global packet_count, need_to_print
   
   if args.ip_address:
     print_color(f'\n[*] Provided IP address: {args.ip_address}\n', 'green')
@@ -319,45 +350,62 @@ def main():
       print_color(f'[Err] Unable to open file {args.output}', 'red')
       exit(0)
       
-  print_color(f"\n[*] Sniffing started on interface {interface['name']}\nTo stop sniffing use Ctrl + c", 'green') 
+  print_color(f"\n[*] Sniffing started on interface {interface['name']}\nTo stop sniffing use Ctrl + c\n", 'green') 
   
   time.sleep(0.5)
   
-  packet_count = 0
   start_time = datetime.datetime.now()
   protocol_map = {1:'ICMP', 6:'TCP', 17:'UDP'}
   
+  if args.clear_output:
+    need_to_print = True
+    update_thread = threading.Thread(target=update_packet_count)
+    update_thread.daemon = True
+    update_thread.start()
+  
   while True:
-    try:
+    try:  
       raw_packet, address = sniffer_socket.recvfrom(65535)
       
       if len(raw_packet) < 20:
         continue
       
       packet_count += 1
-
-      if args.ip_address != 'ALL':
-        if address[0] != args.ip_address:
-          continue
       
-      if protocol != 'ALL':
-        #get packet header and get from header version and protocol
-        ip_header = raw_packet[0:20]
-        ip_version = struct.unpack('!B', ip_header[0:1])[0] >> 4  
-        ip_protocol_num = struct.unpack('!B', ip_header[9:10])[0] 
-        
-        if protocol == protocol_map[ip_protocol_num]:  
-          packet = Packet(raw_packet[0:20], ip_version, ip_protocol_num)
-          #parse_packet(raw_packet, args.raw, args.header)
-        
-        else:
-          continue
+      filtered_ip_version = None
+      filtered_ip_protocol_num = None
+      filtered_src_ip = None
+      filtered_dst_ip = None
 
+      if args.ip_address != 'ALL' or protocol != 'ALL':
+        ip_header = raw_packet[0:20]
+        
+        if args.ip_address != 'ALL':
+          src_ip = socket.inet_ntoa(ip_header[12:16])
+          dst_ip = socket.inet_ntoa(ip_header[16:20])
+          
+          if args.ip_address not in (src_ip, dst_ip):
+            continue
+          
+          filtered_src_ip = src_ip
+          filtered_dst_ip = dst_ip
+          
+        if protocol != 'ALL':
+          # get from header version and protocol   
+          ip_version, ip_protocol_num = struct.unpack('!BB', ip_header[0:2])
+          ip_version >>= 4
+          
+          if protocol != protocol_map[ip_protocol_num]:  
+            continue
+          
+          filtered_ip_version = ip_version
+          filtered_ip_protocol_num = ip_protocol_num
+          
       # Process the packet
+      packet = Packet(raw_packet[0:20], filtered_ip_version, filtered_ip_protocol_num, filtered_src_ip, filtered_dst_ip)
       
       if output_file:
         pcap_file.write(str(raw_packet))
-      
       
     except KeyboardInterrupt:
       print('\nExiting...')
@@ -368,19 +416,17 @@ def main():
         sniffer_socket.ioctl(socket.SIO_RCVALL, socket.RCVALL_OFF)
       break
     
-    except socket.error as e:
+    except Exception as e:
       print_color(f'\n[Err] {e}', 'red')
       logging.error(f'[Err] {e}')
       break
     
-  input("Press Enter to continue...")  
+  need_to_print = False  
+  input("\nPress Enter to continue...")  
   if args.output:
     print(f'Packets captured into {args.output}.pcap')
     pcap_file.close()
     
-  
-      
-
 if __name__ == '__main__':
   logging.basicConfig(level=logging.ERROR, filename='sniffer.log',filemode='a')
   main()
