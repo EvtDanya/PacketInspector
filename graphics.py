@@ -20,30 +20,30 @@ def show_statistics():
     ip_statistics = {
         'TCP': 100,
         'UDP': 50,
-        'ICMP': 20
+        'ICMP': 20,
     }
 
     port_statistics = {
-        'HTTP': 80,
-        'SSH': 22,
-        'FTP': 21
+        '8080': 80,
+        '22': 22,
+        '1234': 21
     }
 
     plt.figure(figsize=(10, 6)) 
 
     draw_statistics(
         ip_statistics,
-        'Протокол',
-        'Количество пакетов',
-        'Статистика по айпи',
+        'Protocol',
+        'Amount of packets',
+        'Protocol statistics',
         211
     )
     
     draw_statistics(
         port_statistics,
-        'Порт',
-        'Количество пакетов',
-        'Статистика по портам',
+        'Port',
+        'Amount of packets',
+        'Port statistics',
         212
     )
 

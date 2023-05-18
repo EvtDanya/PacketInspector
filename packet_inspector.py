@@ -23,14 +23,17 @@ import os
 # import graphics module
 #from graphics import *
 
+# import user
+#from user import * 
+ 
 def run_as_admin(system) -> None:
   '''
-  Check if admin and run as admin if needed
+  Check if admin and run as admin if needed 
   '''
   if system == 'Windows':
     try:
       if not ctypes.windll.shell32.IsUserAnAdmin():  
-        ctypes.windll.shell32.ShellExecuteW(None, 'runas', sys.executable, " ".join(sys.argv), None, 1)
+        ctypes.windll.shell32.ShellExecuteW(None, 'runas', sys.executable, ' '.join(sys.argv), None, 1)
         exit(0)
     except Exception as e:
       print_color(f'\n[Err] {e}', 'red')      
@@ -39,6 +42,14 @@ def run_as_admin(system) -> None:
     if os.getuid() != 0:
       print_color('\nPlease re-run the sniffer using sudo', 'red')
       exit(0)
+
+def validate_ip_address(ip_address):
+  try:
+    socket.inet_aton(ip_address) # try to convert str to ip address
+    return ip_address
+  except socket.error:
+      raise argparse.ArgumentTypeError(f'Invalid IP address: {ip_address}')
+
 
 class ArgumentParser(argparse.ArgumentParser):
   def print_help(self):
@@ -59,16 +70,24 @@ def parse_args() -> argparse.Namespace:
     help='interactive mode for settings'
   )
   parser.add_argument(
-    '-p', '--protocol',
-    metavar='protocol',
-    type=str, default='all',
-    help='protocol to filter by (tcp, udp, icmp)'
-  )
-  parser.add_argument(
     '-i', '--interface',
     metavar='interface',
     type=str,
     help='interface to listen on'
+  )
+  parser.add_argument(
+    '-p', '--protocol',
+    metavar='protocol',
+    type=str,
+    default='ALL',
+    help='protocol to filter by (tcp, udp, icmp)'
+  )
+  parser.add_argument(
+    '-ip', '--ip-address',
+    metavar='ip_address',
+    type=validate_ip_address,
+    default='ALL',
+    help='ip address to filter by'
   )
   parser.add_argument(
     '-r', '--raw',
@@ -89,7 +108,7 @@ def parse_args() -> argparse.Namespace:
     '-o', '--output',
     metavar='filename',
     type=str,
-    help='save packets to the specified file with .pcap extension. If file is not exist then create a new. '
+    help='save packets to the specified file with .pcap extension. If file is not exist then create a new'
   )
   parser.add_argument(
     '-g','--graphics',
@@ -136,7 +155,6 @@ def print_color(text, color=None) -> None:
       return
   print(text)  
   
-
 def print_logo() -> None:
   print(Fore.GREEN + 
           ' _____           _        _   _____                           _                  \n'
@@ -153,7 +171,7 @@ class Packet:
   '''
   Class for packet parsing
   '''
-  def __init__(self, buff=None):
+  def __init__(self, buff=None, ip_version=None, ip_protocol_num=None):
     header = struct.unpack('<BBHHHBBH4s4s', buff) # ipv4 header, add ipv6 header in future versions
     self.ver 
 
@@ -243,6 +261,9 @@ def main():
      
   interfaces = get_interfaces() # get net interfaces
   
+  if args.ip_address:
+    print_color(f'\n[*] Provided IP address: {args.ip_address}\n', 'green')
+  
   if not args.interactive and not args.interface:
     print_color('[Err] You must specify an interface or use interactive mode!', 'red')
     exit(0)
@@ -299,18 +320,41 @@ def main():
       exit(0)
       
   print_color(f"\n[*] Sniffing started on interface {interface['name']}\nTo stop sniffing use Ctrl + c", 'green') 
+  
   time.sleep(0.5)
+  
   packet_count = 0
   start_time = datetime.datetime.now()
+  protocol_map = {1:'ICMP', 6:'TCP', 17:'UDP'}
+  
   while True:
     try:
       raw_packet, address = sniffer_socket.recvfrom(65535)
-      #фильтровать по айпи и по протоколу и по порту назначения
-      packet_count += 1
       
-      # Process the packet
-      parse_packet(raw_packet, args.raw, args.header)
+      if len(raw_packet) < 20:
+        continue
+      
+      packet_count += 1
 
+      if args.ip_address != 'ALL':
+        if address[0] != args.ip_address:
+          continue
+      
+      if protocol != 'ALL':
+        #get packet header and get from header version and protocol
+        ip_header = raw_packet[0:20]
+        ip_version = struct.unpack('!B', ip_header[0:1])[0] >> 4  
+        ip_protocol_num = struct.unpack('!B', ip_header[9:10])[0] 
+        
+        if protocol == protocol_map[ip_protocol_num]:  
+          packet = Packet(raw_packet[0:20], ip_version, ip_protocol_num)
+          #parse_packet(raw_packet, args.raw, args.header)
+        
+        else:
+          continue
+
+      # Process the packet
+      
       if output_file:
         pcap_file.write(str(raw_packet))
       
