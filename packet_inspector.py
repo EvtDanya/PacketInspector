@@ -15,6 +15,7 @@ import socket
 import struct
 import time
 import ipaddress
+import dpkt
 
 # for running as admin
 import ctypes
@@ -36,22 +37,29 @@ def run_as_admin(system) -> None:
       if not ctypes.windll.shell32.IsUserAnAdmin():  
         ctypes.windll.shell32.ShellExecuteW(None, 'runas', sys.executable, ' '.join(sys.argv), None, 1)
         exit(0)
-    except Exception as e:
-      print_color(f'\n[Err] {e}', 'red')      
+    except Exception as ex:
+      print_color(f'\n[Err] {ex}', 'red')      
       exit(1)
   elif system == 'Linux':
     if os.getuid() != 0:
       print_color('\nPlease re-run the sniffer using sudo', 'red')
       exit(0)
-
-def validate_ip_address(ip_address):
-  if ip_address != 'ALL':
-    try:
-      socket.inet_aton(ip_address) # try to convert str to ip address
-      return ip_address
-    except socket.error:
-        raise argparse.ArgumentTypeError(f'Invalid IP address: {ip_address}')
-  return 'ALL'
+class Validation:
+  @staticmethod
+  def validate_ip_address(ip_address):
+    if ip_address != 'ALL':
+      try:
+        ipaddress.ip_address(ip_address) # try to convert str to ip address
+        return ip_address
+      except ValueError:
+          raise argparse.ArgumentTypeError(f'Invalid IP address: {ip_address}')
+    return 'ALL'
+  
+  @staticmethod
+  def validate_num_packets(count):
+      if not count or int(count) <= 0:
+          raise argparse.ArgumentTypeError('Number of packets must be a positive integer (>= 0)!')
+      return int(count)
 
 class ArgumentParser(argparse.ArgumentParser):
   def print_help(self):
@@ -88,7 +96,7 @@ def parse_args() -> argparse.Namespace:
   parser.add_argument(
     '-ip', '--ip-address',
     metavar='ip_address',
-    type=validate_ip_address,
+    type=Validation.validate_ip_address,
     default='ALL',
     help='ip address to filter by'
   )
@@ -108,7 +116,7 @@ def parse_args() -> argparse.Namespace:
     help='print more information about packets'
   )
   parser.add_argument(
-    '-o', '--output',
+    '-s', '--save',
     metavar='filename',
     type=str,
     help='save packets to the specified file with .pcap extension. If file is not exist then create a new'
@@ -119,9 +127,15 @@ def parse_args() -> argparse.Namespace:
     help='draw graphics with statistics after sniffing (don\'t close window with sniffer)'
   )
   parser.add_argument(
-    '-c','--clear-output',
+    '-q','--quiet',
     action='store_true',
     help='don\'t show packets'
+  )
+  parser.add_argument(
+    '-c','--count',
+    type=Validation.validate_num_packets,
+    metavar='N',
+    help='number of packets to capture'
   )
   
   return parser.parse_args()
@@ -156,9 +170,9 @@ def print_color(text, color=None) -> None:
   '''
   Print color text
   '''
-  if color is not None:
+  if color:
     color_obj = getattr(Fore, color.upper(), None)
-    if color_obj is not None:
+    if color_obj:
       print(color_obj + text + Style.RESET_ALL)
       return
   print(text)  
@@ -180,25 +194,7 @@ class Packet:
   Class for packet parsing
   '''
   def __init__(self, buff, src_ip=None, dst_ip=None, ip_version=None, ip_protocol_num=None):
-    self.ver = ip_version
-    self.src_address = ipaddress.ip_address(src_ip)
-    self.dst_address = ipaddress.ip_address(dst_ip)
-    self.buff = buff
-
-    if self.ver is None:
-      self.ver = self.src_address.version
-
-    self.protocol_num = ip_protocol_num
-    if self.protocol_num is None:
-        # Set protocol number based on IP version
-        if self.ver == 4:
-            self.protocol_num = socket.IPPROTO_IP
-        elif self.ver == 6:
-            self.protocol_num = socket.IPPROTO_IPV6
-        else:
-                raise ValueError(f'Unsupported IP version: {self.ver}')
-
-        # Parse the packet header
+    # Parse the packet header
     header = struct.unpack('<BBHHHBBH4s4s', buff)  # ipv4 header, add ipv6 header in future versions  
     self.ihl = header[0] & 0xF
     self.tos = header[1]
@@ -207,7 +203,24 @@ class Packet:
     self.offset = header[4]
     self.ttl = header[5]
     self.sum = header[7]        
-
+ 
+    if src_ip:
+      self.src = src_ip
+      self.src_address = ipaddress.ip_address(src_ip)
+    else:
+      self.src = header[8]  
+      self.src_address = ipaddress.ip_address(self.src)
+    
+    if dst_ip:
+      self.dst = dst_ip
+      self.dst_address = ipaddress.ip_address(self.dst)
+    else:
+      self.dst = header[9]  
+      self.dst_address = ipaddress.ip_address(self.dst)
+    
+    self.ver = ip_version if ip_version else header[0] >> 4 
+    self.protocol_num = ip_protocol_num if ip_protocol_num else header[6]
+              
    
   def hexdump(packet) -> None:
     hex_data = ' '.join(f'{byte:02x}' for byte in packet)
@@ -216,9 +229,7 @@ class Packet:
     for line in lines:
         print(line)
     print(ascii_data)
-  
-  
-  
+   
 def choose_interface(interfaces):
   '''
   Select the interface to sniff on
@@ -240,6 +251,21 @@ def choose_interface(interfaces):
       print_color('[Err] Incorrect number, try again!', 'yellow')
         
   return interfaces[choice-1]
+
+def choose_protocol():
+  '''
+  Select the protocol to filter packets on
+  '''
+  print('Available protocols:')
+  print('1. All')
+  print('2. TCP')
+  print('3. UDP')
+
+  while True:
+    choice = input('Enter the number of the protocol to filter on: ')
+    if choice.isdigit() and int(choice) in range(1, 4):
+      protocols = ['all', 'TCP', 'UDP']
+      return protocols[int(choice) - 1]
 
 def get_sniffer_socket(system, interface) -> socket:
   '''
@@ -270,6 +296,16 @@ def parse_packet(packet_data, raw, header) -> None:
       print(packet_data[:14])
     print_color('Data:', 'yellow')
     print(packet_data[14:])
+
+def get_unique_filename(filename):
+  timestamp = datetime.datetime.now().strftime("%d%m%Y")
+  counter = 1
+  
+  while os.path.exists(filename):
+    filename = f"sniffing_{timestamp}({counter}).pcap"
+    counter += 1
+    
+  return filename
 
 def update_packet_count():
   global packet_count, need_to_print
@@ -305,7 +341,7 @@ def main():
   
   else:
     interface = next((x for x in interfaces if x['name'] == args.interface), None)
-    if interface is None:
+    if not interface:
       print_color(f'[Err] Interface {args.interface} not found', 'red')
       exit(0) 
       
@@ -340,16 +376,23 @@ def main():
       else:
         exit(0)
       
-  output_file = args.output
-  if output_file:
-    output_file +='.pcap'
+  filename = args.save
+  if filename:
+    filename +='.pcap'
+    
+    if os.path.exists(filename):
+      filename = get_unique_filename(filename)
+      
     try:
-      pcap_file = open(args.output, 'a')
-      logging.info(f'Output file: {args.output}')
+      pcap_file = open(filename, 'wb')
+      logging.info(f'Output file: {filename}')
     except IOError:
-      print_color(f'[Err] Unable to open file {args.output}', 'red')
+      print_color(f'[Err] Unable to open file {filename}', 'red')
       exit(0)
       
+    pcap_writer = dpkt.pcap.Writer(pcap_file)
+
+    
   print_color(f"\n[*] Sniffing started on interface {interface['name']}\nTo stop sniffing use Ctrl + c\n", 'green') 
   
   time.sleep(0.5)
@@ -357,7 +400,7 @@ def main():
   start_time = datetime.datetime.now()
   protocol_map = {1:'ICMP', 6:'TCP', 17:'UDP'}
   
-  if args.clear_output:
+  if args.quiet:
     need_to_print = True
     update_thread = threading.Thread(target=update_packet_count)
     update_thread.daemon = True
@@ -369,8 +412,6 @@ def main():
       
       if len(raw_packet) < 20:
         continue
-      
-      packet_count += 1
       
       filtered_ip_version = None
       filtered_ip_protocol_num = None
@@ -391,9 +432,10 @@ def main():
           filtered_dst_ip = dst_ip
           
         if protocol != 'ALL':
+          
           # get from header version and protocol   
-          ip_version, ip_protocol_num = struct.unpack('!BB', ip_header[0:2])
-          ip_version >>= 4
+          ip_version = struct.unpack('!B', ip_header[0:1])[0] >> 4  
+          ip_protocol_num = struct.unpack('!B', ip_header[9:10])[0] 
           
           if protocol != protocol_map[ip_protocol_num]:  
             continue
@@ -402,13 +444,20 @@ def main():
           filtered_ip_protocol_num = ip_protocol_num
           
       # Process the packet
-      packet = Packet(raw_packet[0:20], filtered_ip_version, filtered_ip_protocol_num, filtered_src_ip, filtered_dst_ip)
+      packet_count += 1
       
-      if output_file:
-        pcap_file.write(str(raw_packet))
+      # packet = Packet(raw_packet[0:20], filtered_ip_version, filtered_ip_protocol_num, filtered_src_ip, filtered_dst_ip)
+      # packet.print()
+      
+      if filename:
+         pcap_writer.writepkt(raw_packet)
+         
+      if args.count:
+        if packet_count >= args.count:
+          break
       
     except KeyboardInterrupt:
-      print('\nExiting...')
+      print('\n\nExiting...')
       end_time = datetime.datetime.now()
       print(f'Total sniffing time: {end_time - start_time}')
       print(f'Total packets captured {packet_count}')
@@ -416,16 +465,18 @@ def main():
         sniffer_socket.ioctl(socket.SIO_RCVALL, socket.RCVALL_OFF)
       break
     
-    except Exception as e:
-      print_color(f'\n[Err] {e}', 'red')
-      logging.error(f'[Err] {e}')
+    except Exception as ex:
+      print_color(f'\n[Err] {ex}', 'red')
+      logging.error(f'[Err] {ex}')
       break
     
-  need_to_print = False  
+  need_to_print = False
+  if filename:
+    print(f'Packets captured into {filename}')
+    pcap_file.close()  
+    
   input("\nPress Enter to continue...")  
-  if args.output:
-    print(f'Packets captured into {args.output}.pcap')
-    pcap_file.close()
+  
     
 if __name__ == '__main__':
   logging.basicConfig(level=logging.ERROR, filename='sniffer.log',filemode='a')
