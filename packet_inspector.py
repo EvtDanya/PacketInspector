@@ -60,7 +60,23 @@ class Validation:
       if not count or int(count) <= 0:
           raise argparse.ArgumentTypeError('Number of packets must be a positive integer (>= 0)!')
       return int(count)
-
+    
+  @staticmethod  
+  def validate_protocol(protocol):
+    if protocol != 'ALL':
+      if protocol.upper() in ['TCP', 'UDP', 'ICMP']:
+        return protocol.upper()
+      else:
+        raise argparse.ArgumentTypeError(f'Incorrect protocol! {protocol} is not TCP, UDP or ICMP!')
+    return protocol
+  
+  @staticmethod  
+  def validate_interface(interface_name):
+    interface = next((intrfc for intrfc in get_interfaces() if intrfc['name'] == interface_name), None)
+    if not interface:
+      raise argparse.ArgumentTypeError(f'Interface {interface_name} not found!')
+    return interface
+  
 class ArgumentParser(argparse.ArgumentParser):
   def print_help(self):
     print_logo() # print logo when printing helps
@@ -83,13 +99,13 @@ def parse_args() -> argparse.Namespace:
   parser.add_argument(
     '-i', '--interface',
     metavar='interface',
-    type=str,
+    type=Validation.validate_interface,
     help='interface to listen on'
   )
   parser.add_argument(
     '-p', '--protocol',
     metavar='protocol',
-    type=str,
+    type=Validation.validate_protocol,
     default='ALL',
     help='protocol to filter by (tcp, udp, icmp)'
   )
@@ -235,8 +251,6 @@ def choose_interface(interfaces):
   Select the interface to sniff on
   '''
   print(f'[*] Available interfaces, enter a number between 1 and {len(interfaces)}:')
-  # for i, interface in enumerate(interfaces):
-  #   print(f"{i+1}: {interface['name']}, {interface['ip']}")
   print_table_with_interfaces(interfaces)
   while True:
     try:
@@ -256,16 +270,22 @@ def choose_protocol():
   '''
   Select the protocol to filter packets on
   '''
+  protocols = ['TCP', 'UDP', 'ICMP', 'ALL']
   print('Available protocols:')
-  print('1. All')
-  print('2. TCP')
-  print('3. UDP')
-
+  print('1. TCP\n2. UDP\n3. ICMP\n4. ALL\n')
   while True:
-    choice = input('Enter the number of the protocol to filter on: ')
-    if choice.isdigit() and int(choice) in range(1, 4):
-      protocols = ['all', 'TCP', 'UDP']
-      return protocols[int(choice) - 1]
+    try:
+        choice = int(input('\nEnter the number of the protocol to filter on: '))
+        if choice < 1 or choice > len(protocols):
+            raise ValueError
+        break
+    except KeyboardInterrupt:
+      print('\nExiting...')
+      exit(0)
+    except ValueError:
+      print_color('[Err] Incorrect number, try again!', 'yellow')
+      
+  return protocols[int(choice) - 1]
 
 def get_sniffer_socket(system, interface) -> socket:
   '''
@@ -359,32 +379,9 @@ def main():
   if args.interactive:
     interface = choose_interface(interfaces)
     print(f"[*] Your choice: {interface['name']}\n")
-  
-  else:
-    interface = next((x for x in interfaces if x['name'] == args.interface), None)
-    if not interface:
-      print_color(f'[Err] Interface {args.interface} not found', 'red')
-      exit(0) 
-      
-  
-  if not args.protocol and not args.interactive:
-    print_color('[Err] You must specify the protocol or use interactive mode!', 'red')
-    exit(0)
-    
-  if args.interactive:
-    while True:
-      protocol = input('Enter protocol to sniff for (TCP, UDP, ICMP, ALL): ')
-      if protocol.upper() in ['TCP', 'UDP', 'ICMP', 'ALL']:
-        protocol = protocol.upper()
-        break
-      else:
-        print_color('[Err] Invalid protocol! Try again\n', 'yellow')
-  else:
-    if args.protocol.upper() in ['TCP', 'UDP', 'ICMP']:
-      protocol = args.protocol.upper()
-    else:
-      print_color(f'[Err] Incorrect protocol! {args.protocol} is not TCP, UDP or ICMP','yellow')
-      exit(0)  
+
+    protocol = choose_protocol()
+    print(f"[*] Your choice: {protocol}\n")
       
   while True:
     try:
@@ -400,9 +397,7 @@ def main():
   filename = args.save
   if filename:
     filename +='.pcap'
-    
-    if os.path.exists('dumps/' + filename):
-      filename = get_unique_filename(filename)
+    filename = get_unique_filename(filename)
       
     try:
       pcap_file = open('dumps/' + filename, 'wb')
@@ -410,7 +405,7 @@ def main():
     except IOError:
       print_color(f'[Err] Unable to open/create file {filename} in directory dumps', 'red')
       exit(0)
-      
+
     pcap_writer = dpkt.pcap.Writer(pcap_file)
 
   print_color(f"\n[*] Sniffing started on interface {interface['name']}\nTo stop sniffing use Ctrl + c\n", 'green') 
