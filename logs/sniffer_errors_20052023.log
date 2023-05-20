@@ -1,2 +1,10 @@
 ERROR:root:[Err] 'Packet' object has no attribute 'print'
 ERROR:root:[Err] 'Packet' object has no attribute 'print'
+ERROR:root:[Err] 'Packet' object has no attribute 'print'
+ERROR:root:[Err] 'Packet' object has no attribute 'print'
+ERROR:root:[Err] cannot access local variable 'protocol' where it is not associated with a value
+ERROR:root:[Err] 'Packet' object has no attribute 'print'
+ERROR:root:[Err] 'Packet' object has no attribute 'print'
+ERROR:root:[Err] 'Packet' object has no attribute 'print'
+ERROR:root:[Err] 'Packet' object has no attribute 'print'
+ERROR:root:[Err] 'Packet' object has no attribute 'print'

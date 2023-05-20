@@ -44,7 +44,11 @@ def run_as_admin(system) -> None:
     if os.getuid() != 0:
       print_color('\nPlease re-run the sniffer using sudo', 'red')
       exit(0)
+      
 class Validation:
+  '''
+  Class for args validation
+  '''
   @staticmethod
   def validate_ip_address(ip_address):
     if ip_address != 'ALL':
@@ -272,7 +276,7 @@ def choose_protocol():
   '''
   protocols = ['TCP', 'UDP', 'ICMP', 'ALL']
   print('Available protocols:')
-  print('1. TCP\n2. UDP\n3. ICMP\n4. ALL\n')
+  print('1. TCP\n2. UDP\n3. ICMP\n4. ALL')
   while True:
     try:
         choice = int(input('\nEnter the number of the protocol to filter on: '))
@@ -318,6 +322,9 @@ def parse_packet(packet_data, raw, header) -> None:
     print(packet_data[14:])
 
 def get_unique_filename(filename):
+  '''
+  Get the unique filename
+  '''
   timestamp = datetime.datetime.now().strftime("%d%m%Y")
   counter = 1
   
@@ -328,6 +335,9 @@ def get_unique_filename(filename):
   return filename
 
 class SniffingStatistics:
+  '''
+  Class for sniffing stat(stat for graphics too)
+  '''
   def __init__(self):
     self.connection_activity = {}
     self.packets_statistics = {}
@@ -368,13 +378,14 @@ def main():
   interfaces = get_interfaces() # get net interfaces
   
   sniffing_stat = SniffingStatistics()
-  
-  if args.ip_address:
-    print_color(f'\n[*] Provided IP address: {args.ip_address}\n', 'green')
-  
+    
   if not args.interactive and not args.interface:
     print_color('[Err] You must specify an interface or use interactive mode!', 'red')
     exit(0)
+  
+  if args.interface:
+    interface = args.interface
+    protocol = args.protocol
   
   if args.interactive:
     interface = choose_interface(interfaces)
@@ -388,7 +399,7 @@ def main():
       sniffer_socket = get_sniffer_socket(system, interface)
       break
     except Exception as ex:
-      print_color(f'\n[Err] {ex}\nTry again with another interface!\n', 'yellow')
+      print_color(f'\n[Err] {ex}\nTry again with another interface!\n', 'red')
       if args.interactive:
         interface = choose_interface(interfaces)
       else:
@@ -407,7 +418,10 @@ def main():
       exit(0)
 
     pcap_writer = dpkt.pcap.Writer(pcap_file)
-
+    
+  if args.ip_address:
+    print_color(f'\n[*] Provided IP address: {args.ip_address}\n', 'green')
+    
   print_color(f"\n[*] Sniffing started on interface {interface['name']}\nTo stop sniffing use Ctrl + c\n", 'green') 
   
   time.sleep(0.5)
@@ -483,12 +497,13 @@ def main():
     
   sniffing_stat.need_to_print = False
   if filename:
-    print(f'Packets captured into {filename}, directory dumps')
+    print(f'Packets captured into file {filename} in directory dumps')
     pcap_file.close()  
     
   input("\nPress Enter to continue...")  
   
 if __name__ == '__main__':
+  #creating a log with the current date in its name
   logging.basicConfig(level=logging.ERROR, filename=f'logs/sniffer_errors_{datetime.datetime.now().strftime("%d%m%Y")}.log',filemode='a')
   main()
 
