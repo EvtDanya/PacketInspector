@@ -301,21 +301,41 @@ def get_unique_filename(filename):
   timestamp = datetime.datetime.now().strftime("%d%m%Y")
   counter = 1
   
-  while os.path.exists(filename):
+  while os.path.exists('dumps/' + filename):
     filename = f"sniffing_{timestamp}({counter}).pcap"
     counter += 1
     
   return filename
 
-def update_packet_count():
-  global packet_count, need_to_print
-  while need_to_print:
-    print(f'Total packets captured: {packet_count}', end='\r')
-    time.sleep(1)
+class SniffingStatistics:
+  def __init__(self):
+    self.connection_activity = {}
+    self.packets_statistics = {}
+    self.packet_count = 0
+    self.need_to_print = False
 
-packet_count = 0
-need_to_print = False
+  def update_activity(self, src_ip, dst_ip):
+    connection = (src_ip, dst_ip)
 
+    if connection in self.connection_activity:
+      self.connection_activity[connection] += 1
+    else:
+      self.connection_activity[connection] = 1
+
+  def get_activity(self):
+    return self.connection_activity.items()
+    
+  def create_thread(self):
+    self.need_to_print = True
+    update_thread = threading.Thread(target=self.update_packet_count)
+    update_thread.daemon = True
+    return update_thread
+    
+  def update_packet_count(self):
+    while self.need_to_print:
+      print(f'Total packets captured: {self.packet_count}', end='\r')
+      time.sleep(1)
+        
 def main():
   args = parse_args() # get args and print help for sniffer if necessary
 
@@ -326,7 +346,8 @@ def main():
   print_logo() # print logo
      
   interfaces = get_interfaces() # get net interfaces
-  global packet_count, need_to_print
+  
+  sniffing_stat = SniffingStatistics()
   
   if args.ip_address:
     print_color(f'\n[*] Provided IP address: {args.ip_address}\n', 'green')
@@ -380,19 +401,18 @@ def main():
   if filename:
     filename +='.pcap'
     
-    if os.path.exists(filename):
+    if os.path.exists('dumps/' + filename):
       filename = get_unique_filename(filename)
       
     try:
-      pcap_file = open(filename, 'wb')
+      pcap_file = open('dumps/' + filename, 'wb')
       logging.info(f'Output file: {filename}')
     except IOError:
-      print_color(f'[Err] Unable to open file {filename}', 'red')
+      print_color(f'[Err] Unable to open/create file {filename} in directory dumps', 'red')
       exit(0)
       
     pcap_writer = dpkt.pcap.Writer(pcap_file)
 
-    
   print_color(f"\n[*] Sniffing started on interface {interface['name']}\nTo stop sniffing use Ctrl + c\n", 'green') 
   
   time.sleep(0.5)
@@ -401,10 +421,7 @@ def main():
   protocol_map = {1:'ICMP', 6:'TCP', 17:'UDP'}
   
   if args.quiet:
-    need_to_print = True
-    update_thread = threading.Thread(target=update_packet_count)
-    update_thread.daemon = True
-    update_thread.start()
+    sniffing_stat.create_thread().start()
   
   while True:
     try:  
@@ -432,7 +449,6 @@ def main():
           filtered_dst_ip = dst_ip
           
         if protocol != 'ALL':
-          
           # get from header version and protocol   
           ip_version = struct.unpack('!B', ip_header[0:1])[0] >> 4  
           ip_protocol_num = struct.unpack('!B', ip_header[9:10])[0] 
@@ -444,23 +460,23 @@ def main():
           filtered_ip_protocol_num = ip_protocol_num
           
       # Process the packet
-      packet_count += 1
+      sniffing_stat.packet_count += 1
       
-      # packet = Packet(raw_packet[0:20], filtered_ip_version, filtered_ip_protocol_num, filtered_src_ip, filtered_dst_ip)
-      # packet.print()
+      packet = Packet(raw_packet[0:20], filtered_ip_version, filtered_ip_protocol_num, filtered_src_ip, filtered_dst_ip)
+      packet.print()
       
       if filename:
          pcap_writer.writepkt(raw_packet)
          
       if args.count:
-        if packet_count >= args.count:
-          break
+        if sniffing_stat.packet_count == args.count:
+          raise KeyboardInterrupt
       
     except KeyboardInterrupt:
-      print('\n\nExiting...')
+      print('\n\nSniffing complete...')
       end_time = datetime.datetime.now()
       print(f'Total sniffing time: {end_time - start_time}')
-      print(f'Total packets captured {packet_count}')
+      print(f'Total packets captured {sniffing_stat.packet_count}')
       if system == 'Windows':
         sniffer_socket.ioctl(socket.SIO_RCVALL, socket.RCVALL_OFF)
       break
@@ -470,16 +486,15 @@ def main():
       logging.error(f'[Err] {ex}')
       break
     
-  need_to_print = False
+  sniffing_stat.need_to_print = False
   if filename:
-    print(f'Packets captured into {filename}')
+    print(f'Packets captured into {filename}, directory dumps')
     pcap_file.close()  
     
   input("\nPress Enter to continue...")  
   
-    
 if __name__ == '__main__':
-  logging.basicConfig(level=logging.ERROR, filename='sniffer.log',filemode='a')
+  logging.basicConfig(level=logging.ERROR, filename=f'logs/sniffer_errors_{datetime.datetime.now().strftime("%d%m%Y")}.log',filemode='a')
   main()
 
 
