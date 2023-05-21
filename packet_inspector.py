@@ -16,7 +16,6 @@ import struct
 import time
 import ipaddress
 import dpkt
-from scapy.all import wrpcap
 
 # for running as admin
 import ctypes
