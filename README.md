@@ -8,4 +8,5 @@ To install dependencies for this program you can use scripts:
 
 ### About
 You can start PacketInspector with -h argument to see all opportunities
+![alt text](https://github.com/EvtDanya/Packet_Inspector/blob/main/print_help.jpg)
 

@@ -529,7 +529,7 @@ def main():
   
   while True:
     try:  
-      raw_packet, address = sniffer_socket.recvfrom(65535)
+      raw_packet = sniffer_socket.recvfrom(65535)[0]
       timestamp = int(datetime.datetime.now().timestamp())
       
       print(raw_packet)
