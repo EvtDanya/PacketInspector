@@ -16,6 +16,7 @@ import struct
 import time
 import ipaddress
 import dpkt
+from scapy.all import wrpcap
 
 # for running as admin
 import ctypes
@@ -254,8 +255,10 @@ class Packet:
   '''
   Class for packet parsing
   '''
-  def __init__(self, buff, src_ip=None, dst_ip=None, ip_version=None, ip_protocol_num=None, raw=None) -> None:
+  def __init__(self, buff, src_ip=None, dst_ip=None, ip_version=None, ip_protocol_num=None, timestamp=None, raw=None, num=None) -> None:
     self.need_to_print_raw = raw
+    self.timestamp = timestamp
+    self.num = num
     
     # Parse the packet header
     header = struct.unpack('!BBHHHBBH4s4s', buff[0:20])  # ipv4 header, add ipv6 header in future versions  
@@ -285,10 +288,16 @@ class Packet:
     self.protocol_num = ip_protocol_num if ip_protocol_num else header[6]
     
     self.payload = buff[20:]
+    self.buf = buff
+    
+    self.type = None
+    self.code = None
+    self.src_port = None
+    self.dst_port = None
     
     try:
       self.protocol = {1:'ICMP', 6:'TCP', 17:'UDP'}[self.protocol_num]
-    except Exception as e:
+    except Exception:
       self.protocol = 'Unsupported protocol'
     
     if self.protocol == 'TCP':
@@ -299,9 +308,7 @@ class Packet:
       self.parse_icmp_header() 
       
   def parse_tcp_header(self) -> None:
-    tcp_header = struct.unpack('!HHLLBBHHH', self.payload[:20])
-    self.src_port = tcp_header[0]
-    self.dst_port = tcp_header[1]
+    self.src_port, self.dst_port = struct.unpack('!HH', self.payload[:4])
   
   def parse_udp_header(self) -> None:
     udp_header = struct.unpack('!HHHH', self.payload[:8])
@@ -314,10 +321,10 @@ class Packet:
     self.code = icmp_header[1]
   
   def print_less(self) -> None:
-    print(f'{self.protocol}: {self.src_address} -> {self.dst_address}')
+    print(f'No. {self.num} - {self.protocol}: {self.src_address} -> {self.dst_address}')
   
   def print_header(self) -> None:
-    print_color('\n[>] Header: ', 'yellow')
+    print_color(f'\nNo. {self.num}\n[>] Header: ', 'yellow')
     
     if (self.protocol == 'TCP' or self.protocol == 'UDP'):
       print(f'  Source IP: {self.src_address} Port: {self.src_port}')
@@ -357,9 +364,22 @@ class Packet:
     
     print_color(' [*] ASCII data:', 'yellow')
     self.print_ascii_data()
-    
     print('\n')
     
+  def get_pcap_packet(self) -> bytes:
+    ethernet_header = dpkt.ethernet.Ethernet(src=self.src, dst=self.dst, type=dpkt.ethernet.ETH_TYPE_IP)
+
+    # Create IP header
+    ip_header = dpkt.ip.IP()
+
+    # Parse the IP header from the packet data
+    ip_header.unpack(self.buf)
+
+    # Combine the Ethernet header with the IP header and packet data
+    ethernet_header.data = ip_header
+    ethernet_header.data.data = self.buf
+    return ethernet_header
+  
 def get_sniffer_socket(system, interface) -> socket:
   '''
   Returns a socket for sniffing
@@ -500,7 +520,7 @@ def main():
     
   print_color(f"\n[*] Sniffing started on interface {interface['name']}\nTo stop sniffing use Ctrl + c\n", 'green') 
   
-  time.sleep(0.5)
+  time.sleep(0.5) # если большой поток пакетов в самом начале сниффинга будет, то пользователь не увидит как остановить сниффинг
   
   start_time = datetime.datetime.now()
   protocol_map = {1:'ICMP', 6:'TCP', 17:'UDP'}
@@ -511,6 +531,9 @@ def main():
   while True:
     try:  
       raw_packet, address = sniffer_socket.recvfrom(65535)
+      timestamp = int(datetime.datetime.now().timestamp())
+      
+      print(raw_packet)
       
       filtered_ip_version = None
       filtered_ip_protocol_num = None
@@ -547,7 +570,7 @@ def main():
       #process the packet
       sniffing_stat.packet_count += 1
       
-      packet = Packet(raw_packet, filtered_ip_version, filtered_ip_protocol_num, filtered_src_ip, filtered_dst_ip, args.raw)
+      packet = Packet(raw_packet, filtered_ip_version, filtered_ip_protocol_num, filtered_src_ip, filtered_dst_ip, timestamp, args.raw, sniffing_stat.packet_count)
       
       #update stat
       sniffing_stat.update_activity(packet.src_address, packet.dst_address)
@@ -563,7 +586,7 @@ def main():
           packet.print_payload()
         
       if filename:
-         pcap_writer.writepkt(raw_packet)
+        pcap_writer.writepkt(packet.get_pcap_packet().pack())      
          
       if args.count:
         if sniffing_stat.packet_count == args.count:
@@ -578,10 +601,10 @@ def main():
         sniffer_socket.ioctl(socket.SIO_RCVALL, socket.RCVALL_OFF)
       break
     
-    # except Exception as ex:
-    #   print_color(f'\n[Err] {ex}', 'red')
-    #   logging.error(f'[Err] {ex}')
-    #   break
+    except Exception as ex:
+      print_color(f'\n[Err] {ex}', 'red')
+      logging.error(f'[Err] {ex}')
+      break
     
   sniffing_stat.need_to_print = False
     
