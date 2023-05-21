@@ -323,7 +323,7 @@ class Packet:
     print(f'No. {self.num} - {self.protocol}: {self.src_address} -> {self.dst_address}')
   
   def print_header(self) -> None:
-    print_color(f'\nNo. {self.num}\n[>] Header: ', 'yellow')
+    print_color(f'No. {self.num}\n[>] Header: ', 'yellow')
     
     if (self.protocol == 'TCP' or self.protocol == 'UDP'):
       print(f'  Source IP: {self.src_address} Port: {self.src_port}')
@@ -394,20 +394,6 @@ def get_sniffer_socket(system, interface) -> socket:
     sniffer_socket.bind((interface['name'], 0))
 
   return sniffer_socket
-
-def parse_packet(packet_data, raw, header) -> None:
-  '''
-  Parse a captured packet
-  '''
-  print('\n')
-  if raw:
-    print(packet_data)
-  else:
-    if header:
-      print_color('Header:', 'yellow')
-      print(packet_data[:14])
-    print_color('Data:', 'yellow')
-    print(packet_data[14:])
 
 def get_unique_filename(filename) -> str:
   '''
@@ -531,9 +517,7 @@ def main():
     try:  
       raw_packet = sniffer_socket.recvfrom(65535)[0]
       timestamp = int(datetime.datetime.now().timestamp())
-      
-      print(raw_packet)
-      
+
       filtered_ip_version = None
       filtered_ip_protocol_num = None
       filtered_src_ip = None
