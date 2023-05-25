@@ -286,8 +286,7 @@ class Packet:
     self.ver = ip_version if ip_version else header[0] >> 4 
     self.protocol_num = ip_protocol_num if ip_protocol_num else header[6]
     
-    self.payload = buff[20:]
-    self.buf = buff
+    self.buff = buff
     
     self.type = None
     self.code = None
@@ -307,15 +306,15 @@ class Packet:
       self.parse_icmp_header() 
       
   def parse_tcp_header(self) -> None:
-    self.src_port, self.dst_port = struct.unpack('!HH', self.payload[:4])
+    self.src_port, self.dst_port = struct.unpack('!HH', self.buff[20:24])
   
   def parse_udp_header(self) -> None:
-    udp_header = struct.unpack('!HHHH', self.payload[:8])
+    udp_header = struct.unpack('!HHHH', self.buff[20:28])
     self.src_port = udp_header[0]
     self.dst_port = udp_header[1]
   
   def parse_icmp_header(self) -> None:
-    icmp_header = struct.unpack('!BBHHH', self.payload[self.ihl:self.ihl+8])
+    icmp_header = struct.unpack('!BBHHH', self.buff[20:28])
     self.type = icmp_header[0]
     self.code = icmp_header[1]
   
@@ -339,17 +338,17 @@ class Packet:
     print(f'  TTL: {self.ttl}')       
    
   def print_hexdump(self) -> None:
-    hex_data = ' '.join(f'{byte:02x}' for byte in self.payload)
+    hex_data = ' '.join(f'{byte:02x}' for byte in self.buff[20:])
     lines = [hex_data[i:i+48] for i in range(0, len(hex_data), 48)]
     for line in lines:
         print(f'  {line}')
 
   def print_ascii_data(self) -> None:
-    ascii_data = ''.join(chr(byte) if 32 <= byte <= 126 else '.' for byte in self.payload)
+    ascii_data = ''.join(chr(byte) if 32 <= byte <= 126 else '.' for byte in self.buff[20:])
     print(f'  {ascii_data}')
   
   def print_raw(self) -> None:
-    print(f' {self.payload}')
+    print(f' {self.buff[20:]}')
   
   def print_payload(self) -> None:
     print_color('[>] Payload:', 'yellow')
@@ -367,16 +366,17 @@ class Packet:
     
   def get_pcap_packet(self) -> bytes:
     ethernet_header = dpkt.ethernet.Ethernet(src=self.src, dst=self.dst, type=dpkt.ethernet.ETH_TYPE_IP)
-
-    # Create IP header
+    
+    # Create IP headerc
     ip_header = dpkt.ip.IP()
 
     # Parse the IP header from the packet data
-    ip_header.unpack(self.buf)
+    ip_header.unpack(self.buff)
 
     # Combine the Ethernet header with the IP header and packet data
     ethernet_header.data = ip_header
-    ethernet_header.data.data = self.buf
+    ethernet_header.data.data = self.buff[20:]
+    
     return ethernet_header
   
 def get_sniffer_socket(system, interface) -> socket:
@@ -517,7 +517,7 @@ def main():
     try:  
       raw_packet = sniffer_socket.recvfrom(65535)[0]
       timestamp = int(datetime.datetime.now().timestamp())
-
+      
       filtered_ip_version = None
       filtered_ip_protocol_num = None
       filtered_src_ip = None
@@ -556,8 +556,9 @@ def main():
       packet = Packet(raw_packet, filtered_ip_version, filtered_ip_protocol_num, filtered_src_ip, filtered_dst_ip, timestamp, args.raw, sniffing_stat.packet_count)
       
       #update stat
-      sniffing_stat.update_activity(packet.src_address, packet.dst_address)
-      sniffing_stat.update_packets_statistics(packet.protocol)
+      if args.graphics:
+        sniffing_stat.update_activity(packet.src_address, packet.dst_address)
+        sniffing_stat.update_packets_statistics(packet.protocol)
       
       #print packet's data
       if not args.quiet:
