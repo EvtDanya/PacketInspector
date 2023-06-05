@@ -88,7 +88,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
       '-r', '--raw',
       action='store_true',
-      help='output packet contents in raw format'
+      help='output packet contents in raw format (need to use with -S option)'
     )
     parser.add_argument(
       '-H', '--header',

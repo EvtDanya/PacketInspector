@@ -68,7 +68,6 @@ def main():
   
   sniffing_stat = SniffingStatistics()
   
-    
   if not args.interactive and not args.interface:
     print_color('[Err] You must specify an interface or use interactive mode!', 'red')
     input('\nPress Enter to continue...') 
@@ -76,8 +75,6 @@ def main():
   
   if args.interface:
     interface = args.interface
-    
-  if args.protocol:
     protocol = args.protocol
   
   if args.interactive:
@@ -159,7 +156,7 @@ def main():
           try:
             if protocol != protocol_map[ip_protocol_num]:  
               continue
-          except Exception as e:
+          except Exception:
             continue
   
           filtered_ip_version = ip_version
@@ -168,7 +165,7 @@ def main():
       #process the packet
       sniffing_stat.packet_count += 1
       
-      packet = Packet(raw_packet, filtered_ip_version, filtered_ip_protocol_num, filtered_src_ip, filtered_dst_ip, timestamp, args.raw, sniffing_stat.packet_count)
+      packet = Packet(raw_packet, filtered_src_ip, filtered_dst_ip, filtered_ip_version, filtered_ip_protocol_num, timestamp, args.raw, sniffing_stat.packet_count)
       
       #update stat
       if args.graphics:

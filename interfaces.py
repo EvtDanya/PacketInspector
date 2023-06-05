@@ -17,7 +17,6 @@ def get_interfaces() -> list:
 
   return available_interfaces
 
-
 def get_sniffer_socket(system, interface) -> socket:
   '''
   Returns a socket for sniffing
