@@ -28,11 +28,14 @@ def run_as_admin(system) -> None:
   '''
   if system == 'Windows':
     try:
-      if not ctypes.windll.shell32.IsUserAnAdmin():  
-        ctypes.windll.shell32.ShellExecuteW(None, 'runas', sys.executable, ' '.join(sys.argv), None, 1)
+      if not ctypes.windll.shell32.IsUserAnAdmin(): 
+        arguments = ' '.join(['"{}"'.format(arg) for arg in sys.argv])
+        ctypes.windll.shell32.ShellExecuteW(None, 'runas', sys.executable, arguments, None, 1)
         exit(0)
     except Exception as ex:
-      print_color(f'\n[Err] {ex}', 'red')      
+      print_color(f'\n[Err] {ex}', 'red')
+      logging.error(f'[Err] {ex}')
+      input('\nPress Enter to continue...') 
       exit(1)
   elif system == 'Linux':
     if os.getuid() != 0:
@@ -54,23 +57,27 @@ def get_unique_filename(filename) -> str:
 
 def main():
   args = parse_args() # get args and print help for sniffer if necessary
-
+  
   system = platform.system() # we need to run as admin to create sockets
   run_as_admin(system) 
   
   init() #for colorama
   print_logo() # print logo
-     
+  
   interfaces = get_interfaces() # get net interfaces
   
   sniffing_stat = SniffingStatistics()
+  
     
   if not args.interactive and not args.interface:
     print_color('[Err] You must specify an interface or use interactive mode!', 'red')
+    input('\nPress Enter to continue...') 
     exit(0)
   
   if args.interface:
     interface = args.interface
+    
+  if args.protocol:
     protocol = args.protocol
   
   if args.interactive:
@@ -86,14 +93,16 @@ def main():
       break
     except Exception as ex:
       print_color(f'\n[Err] {ex}\nTry again with another interface!\n', 'red')
+      logging.error(f'[Err] {ex}')
       if args.interactive:
         interface = choose_interface(interfaces)
       else:
+        input('\nPress Enter to continue...') 
         exit(0)
       
   filename = args.save
   if filename:
-    filename +='.pcap'
+    filename += '.pcap'
     filename = get_unique_filename(filename)
       
     try:
@@ -101,6 +110,7 @@ def main():
       logging.info(f'Output file: {filename}')
     except IOError:
       print_color(f'[Err] Unable to open/create file {filename} in directory dumps', 'red')
+      input('\nPress Enter to continue...') 
       exit(0)
 
     pcap_writer = dpkt.pcap.Writer(pcap_file)
@@ -209,7 +219,7 @@ def main():
   
 if __name__ == '__main__':
   #creating a log with the current date in its name
-  logging.basicConfig(level=logging.ERROR, filename=f"logs/sniffer_errors_{datetime.datetime.now().strftime('%d%m%Y')}.log",filemode='a')
+  logging.basicConfig(level=logging.DEBUG, filename=f"logs/sniffer_errors_{datetime.datetime.now().strftime('%d%m%Y')}.log", filemode='a', encoding='utf-8')
   main()
 
 
