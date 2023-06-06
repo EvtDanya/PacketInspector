@@ -130,8 +130,8 @@ def main():
       raw_packet = sniffer_socket.recvfrom(65535)[0]
       timestamp = int(datetime.datetime.now().timestamp())
       
-      filtered_ip_version = None
-      filtered_ip_protocol_num = None
+      ip_version = struct.unpack('!B', raw_packet[0:20][0:1])[0] >> 4  
+      ip_protocol_num = struct.unpack('!B', raw_packet[0:20][9:10])[0] 
       filtered_src_ip = None
       filtered_dst_ip = None
 
@@ -150,22 +150,16 @@ def main():
           
         if protocol != 'ALL':
           # get from header version and protocol   
-          ip_version = struct.unpack('!B', ip_header[0:1])[0] >> 4  
-          ip_protocol_num = struct.unpack('!B', ip_header[9:10])[0] 
-          
           try:
             if protocol != protocol_map[ip_protocol_num]:  
               continue
           except Exception:
             continue
-  
-          filtered_ip_version = ip_version
-          filtered_ip_protocol_num = ip_protocol_num
           
       #process the packet
       sniffing_stat.packet_count += 1
       
-      packet = Packet(raw_packet, filtered_src_ip, filtered_dst_ip, filtered_ip_version, filtered_ip_protocol_num, timestamp, args.raw, sniffing_stat.packet_count)
+      packet = PacketFactory.create_packet(raw_packet, filtered_src_ip, filtered_dst_ip, ip_version, ip_protocol_num, timestamp, args.raw, sniffing_stat.packet_count)
       
       #update stat
       if args.graphics:

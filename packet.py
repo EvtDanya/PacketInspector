@@ -3,6 +3,21 @@ import ipaddress
 import dpkt
 from print import print_color
 
+class PacketFactory:
+  '''
+  Factory class
+  '''
+  @staticmethod
+  def create_packet(buff, src_ip=None, dst_ip=None, ip_version=None, ip_protocol_num=None, timestamp=None, raw=None, num=None):
+    if ip_protocol_num == 6:
+      return TCPPacket(buff, src_ip, dst_ip, ip_version, ip_protocol_num, timestamp, raw, num)
+    elif ip_protocol_num == 17:
+      return UDPPacket(buff, src_ip, dst_ip, ip_version, ip_protocol_num, timestamp, raw, num)
+    elif ip_protocol_num == 1:
+      return ICMPPacket(buff, src_ip, dst_ip, ip_version, ip_protocol_num, timestamp, raw, num)
+    else:
+      return Packet(buff, src_ip, dst_ip, ip_version, ip_protocol_num, timestamp, raw, num)
+
 class Packet:
   '''
   Class for packet parsing
@@ -41,51 +56,16 @@ class Packet:
     
     self.buff = buff
     
-    self.type = None
-    self.code = None
-    self.src_port = None
-    self.dst_port = None
-    
     try:
       self.protocol = {1:'ICMP', 6:'TCP', 17:'UDP'}[self.protocol_num]
     except Exception:
       self.protocol = 'Unsupported protocol'
-    
-    if self.protocol == 'TCP':
-      self.parse_tcp_header()
-    elif self.protocol == 'UDP':
-      self.parse_udp_header()  
-    elif self.protocol == 'ICMP':
-      self.parse_icmp_header() 
-      
-  def parse_tcp_header(self) -> None:
-    self.src_port, self.dst_port = struct.unpack('!HH', self.buff[20:24])
-  
-  def parse_udp_header(self) -> None:
-    udp_header = struct.unpack('!HHHH', self.buff[20:28])
-    self.src_port = udp_header[0]
-    self.dst_port = udp_header[1]
-  
-  def parse_icmp_header(self) -> None:
-    icmp_header = struct.unpack('!BBHHH', self.buff[20:28])
-    self.type = icmp_header[0]
-    self.code = icmp_header[1]
   
   def print_less(self) -> None:
     print(f'No. {self.num} - {self.protocol}: {self.src_address} -> {self.dst_address}')
   
   def print_header(self) -> None:
     print_color(f'No. {self.num}\n[>] Header: ', 'yellow')
-    
-    if (self.protocol == 'TCP' or self.protocol == 'UDP'):
-      print(f'  Source IP: {self.src_address} Port: {self.src_port}')
-      print(f'  Destination IP: {self.dst_address} Port: {self.dst_port}')
-    else:
-      print(f'  Source IP: {self.src_address}')
-      print(f'  Destination IP: {self.dst_address}') 
-      print(f'  Type: {self.type}')
-      print(f'  Code: {self.code}')
-      
     print(f'  Version: {self.ver}')
     print(f'  Protocol Number: {self.protocol_num} -> {self.protocol}')
     print(f'  TTL: {self.ttl}')       
@@ -131,3 +111,55 @@ class Packet:
     ethernet_header.data.data = self.buff[20:]
     
     return ethernet_header
+
+class TCPPacket(Packet):
+    def __init__(self, buff, src_ip=None, dst_ip=None, ip_version=None, ip_protocol_num=None, timestamp=None, raw=None, num=None):
+      super().__init__(buff, src_ip, dst_ip, ip_version, ip_protocol_num, timestamp, raw, num)
+      self.src_port = None
+      self.dst_port = None  
+      self.parse_header()
+      
+    def parse_header(self) -> None:
+      self.src_port, self.dst_port = struct.unpack('!HH', self.buff[20:24])
+      
+    def print_header(self) -> None:
+      super().print_header()
+      print(f'  Source IP: {self.src_address} Port: {self.src_port}')
+      print(f'  Destination IP: {self.dst_address} Port: {self.dst_port}')
+
+class UDPPacket(Packet):
+    def __init__(self, buff, src_ip=None, dst_ip=None, ip_version=None, ip_protocol_num=None, timestamp=None, raw=None, num=None):
+      super().__init__(buff, src_ip, dst_ip, ip_version, ip_protocol_num, timestamp, raw, num)
+      self.src_port = None
+      self.dst_port = None 
+      self.parse_header()
+      
+    def parse_header(self) -> None:
+      udp_header = struct.unpack('!HHHH', self.buff[20:28])
+      self.src_port = udp_header[0]
+      self.dst_port = udp_header[1]
+      
+    def print_header(self) -> None:
+      super().print_header()
+      print(f'  Source IP: {self.src_address} Port: {self.src_port}')
+      print(f'  Destination IP: {self.dst_address} Port: {self.dst_port}')
+
+class ICMPPacket(Packet):
+    def __init__(self, buff, src_ip=None, dst_ip=None, ip_version=None, ip_protocol_num=None, timestamp=None, raw=None, num=None):
+      super().__init__(buff, src_ip, dst_ip, ip_version, ip_protocol_num, timestamp, raw, num)
+      self.type = None
+      self.code = None 
+      self.parse_header()
+       
+    def parse_header(self) -> None:
+      icmp_header = struct.unpack('!BBHHH', self.buff[20:28])
+      self.type = icmp_header[0]
+      self.code = icmp_header[1]
+      
+    def print_header(self) -> None:  
+      super().print_header()
+      print(f'  Type: {self.type}')
+      print(f'  Code: {self.code}')
+      print(f'  Source IP: {self.src_address}')
+      print(f'  Destination IP: {self.dst_address}') 
+      
