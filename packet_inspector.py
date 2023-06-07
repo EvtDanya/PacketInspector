@@ -159,7 +159,7 @@ def main():
       #process the packet
       sniffing_stat.packet_count += 1
       
-      packet = PacketFactory.create_packet(raw_packet, filtered_src_ip, filtered_dst_ip, ip_version, ip_protocol_num, timestamp, args.raw, sniffing_stat.packet_count)
+      packet = PacketFactory.create_packet(system, raw_packet, filtered_src_ip, filtered_dst_ip, ip_version, ip_protocol_num, timestamp, args.raw, sniffing_stat.packet_count)
       
       #update stat
       if args.graphics:

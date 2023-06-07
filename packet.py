@@ -8,27 +8,31 @@ class PacketFactory:
   Factory class
   '''
   @staticmethod
-  def create_packet(buff, src_ip=None, dst_ip=None, ip_version=None, ip_protocol_num=None, timestamp=None, raw=None, num=None):
+  def create_packet(system, buff, src_ip=None, dst_ip=None, ip_version=None, ip_protocol_num=None, timestamp=None, raw=None, num=None):  
     if ip_protocol_num == 6:
-      return TCPPacket(buff, src_ip, dst_ip, ip_version, ip_protocol_num, timestamp, raw, num)
+      return TCPPacket(PacketFactory.get_format_char(system), buff, src_ip, dst_ip, ip_version, ip_protocol_num, timestamp, raw, num)
     elif ip_protocol_num == 17:
-      return UDPPacket(buff, src_ip, dst_ip, ip_version, ip_protocol_num, timestamp, raw, num)
+      return UDPPacket(PacketFactory.get_format_char(system), buff, src_ip, dst_ip, ip_version, ip_protocol_num, timestamp, raw, num)
     elif ip_protocol_num == 1:
-      return ICMPPacket(buff, src_ip, dst_ip, ip_version, ip_protocol_num, timestamp, raw, num)
+      return ICMPPacket(PacketFactory.get_format_char(system), buff, src_ip, dst_ip, ip_version, ip_protocol_num, timestamp, raw, num)
     else:
-      return Packet(buff, src_ip, dst_ip, ip_version, ip_protocol_num, timestamp, raw, num)
-
+      return Packet(PacketFactory.get_format_char(system), buff, src_ip, dst_ip, ip_version, ip_protocol_num, timestamp, raw, num)
+  
+  @staticmethod
+  def get_format_char(system) -> str:
+    return '!' if system == 'Windows' else '<'
+  
 class Packet:
   '''
   Class for packet parsing
   '''
-  def __init__(self, buff, src_ip=None, dst_ip=None, ip_version=None, ip_protocol_num=None, timestamp=None, raw=None, num=None) -> None:
+  def __init__(self, format_char, buff, src_ip=None, dst_ip=None, ip_version=None, ip_protocol_num=None, timestamp=None, raw=None, num=None) -> None:
     self.need_to_print_raw = raw
     self.timestamp = timestamp
     self.num = num
     
     # Parse the packet header
-    header = struct.unpack('!BBHHHBBH4s4s', buff[0:20])  # ipv4 header, add ipv6 header in future versions  
+    header = struct.unpack(format_char +'BBHHHBBH4s4s', buff[0:20])  # ipv4 header, add ipv6 header in future versions  
     self.ihl = header[0] & 0xF
     self.tos = header[1]
     self.len = header[2]
@@ -113,14 +117,14 @@ class Packet:
     return ethernet_header
 
 class TCPPacket(Packet):
-    def __init__(self, buff, src_ip=None, dst_ip=None, ip_version=None, ip_protocol_num=None, timestamp=None, raw=None, num=None):
-      super().__init__(buff, src_ip, dst_ip, ip_version, ip_protocol_num, timestamp, raw, num)
+    def __init__(self, format_char, buff, src_ip=None, dst_ip=None, ip_version=None, ip_protocol_num=None, timestamp=None, raw=None, num=None) -> None:
+      super().__init__(format_char, buff, src_ip, dst_ip, ip_version, ip_protocol_num, timestamp, raw, num)
       self.src_port = None
       self.dst_port = None  
-      self.parse_header()
+      self.parse_header(format_char)
       
-    def parse_header(self) -> None:
-      self.src_port, self.dst_port = struct.unpack('!HH', self.buff[20:24])
+    def parse_header(self, format_char) -> None:
+      self.src_port, self.dst_port = struct.unpack(str(format_char) + 'HH', self.buff[20:24])
       
     def print_header(self) -> None:
       super().print_header()
@@ -128,14 +132,14 @@ class TCPPacket(Packet):
       print(f'  Destination IP: {self.dst_address} Port: {self.dst_port}')
 
 class UDPPacket(Packet):
-    def __init__(self, buff, src_ip=None, dst_ip=None, ip_version=None, ip_protocol_num=None, timestamp=None, raw=None, num=None):
-      super().__init__(buff, src_ip, dst_ip, ip_version, ip_protocol_num, timestamp, raw, num)
+    def __init__(self, format_char, buff, src_ip=None, dst_ip=None, ip_version=None, ip_protocol_num=None, timestamp=None, raw=None, num=None) -> None:
+      super().__init__(format_char, buff, src_ip, dst_ip, ip_version, ip_protocol_num, timestamp, raw, num)
       self.src_port = None
       self.dst_port = None 
-      self.parse_header()
+      self.parse_header(format_char)
       
-    def parse_header(self) -> None:
-      udp_header = struct.unpack('!HHHH', self.buff[20:28])
+    def parse_header(self, format_char) -> None:
+      udp_header = struct.unpack(str(format_char) + 'HHHH', self.buff[20:28])
       self.src_port = udp_header[0]
       self.dst_port = udp_header[1]
       
@@ -145,14 +149,14 @@ class UDPPacket(Packet):
       print(f'  Destination IP: {self.dst_address} Port: {self.dst_port}')
 
 class ICMPPacket(Packet):
-    def __init__(self, buff, src_ip=None, dst_ip=None, ip_version=None, ip_protocol_num=None, timestamp=None, raw=None, num=None):
-      super().__init__(buff, src_ip, dst_ip, ip_version, ip_protocol_num, timestamp, raw, num)
+    def __init__(self, format_char, buff, src_ip=None, dst_ip=None, ip_version=None, ip_protocol_num=None, timestamp=None, raw=None, num=None) -> None:
+      super().__init__(format_char, buff, src_ip, dst_ip, ip_version, ip_protocol_num, timestamp, raw, num)
       self.type = None
       self.code = None 
-      self.parse_header()
+      self.parse_header(format_char)
        
-    def parse_header(self) -> None:
-      icmp_header = struct.unpack('!BBHHH', self.buff[20:28])
+    def parse_header(self, format_char) -> None:
+      icmp_header = struct.unpack(str(format_char) + 'BBHHH', self.buff[20:28])
       self.type = icmp_header[0]
       self.code = icmp_header[1]
       
