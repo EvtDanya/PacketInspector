@@ -1,7 +1,0 @@
-ifaddr==0.2.0
-sockets==1.0.0
-argparse==1.4.0
-colorama==0.4.6
-prettytable==3.5.0
-dpkt==1.9.8
-matplotlib==3.7.1
