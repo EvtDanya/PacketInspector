@@ -8,12 +8,14 @@ def get_interfaces() -> list:
   '''
   available_interfaces = []
   interfaces = ifaddr.get_adapters()
-
+  
   for adapter in interfaces:
-    interface = {}
-    interface['name'] = adapter.nice_name
-    interface['ip'] = adapter.ips[1].ip
-    available_interfaces.append(interface)
+    if hasattr(adapter, 'ips') and adapter.ips and hasattr(adapter.ips[0], 'ip'):
+      interface = {
+        'name': adapter.nice_name if hasattr(adapter, 'nice_name') and adapter.nice_name else 'Unknown',
+        'ip': adapter.ips[0].ip
+      }
+      available_interfaces.append(interface)
 
   return available_interfaces
 

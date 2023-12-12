@@ -64,15 +64,13 @@ def create_directory(dirname) -> None:
 def start_logging() -> None:
   create_directory('logs/')
   logging.basicConfig(
-    level=logging.DEBUG,
+    level=logging.INFO,
     filename=f"logs/sniffer_errors_{datetime.datetime.now().strftime('%d%m%Y')}.log",
     filemode='a',
     encoding='utf-8'
   )
 
-def main():
-  start_logging()
-  
+def main():  
   args = parse_args() # get args and print help for sniffer if necessary
   
   system = platform.system() # we need to run as admin to create sockets
@@ -228,6 +226,7 @@ def main():
   
   
 if __name__ == '__main__':
+  start_logging()
   main()
 
 
